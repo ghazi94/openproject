@@ -4,6 +4,7 @@ import {WorkPackageResourceInterface} from "../../../api/api-v3/hal-resources/wo
 import {calculatePositionValueForDayCountingPx, RenderInfo, timelineElementCssClass} from "../wp-timeline";
 import {TimelineCellRenderer} from "./timeline-cell-renderer";
 import Moment = moment.Moment;
+import {WorkPackageChangeset} from '../../../wp-edit-form/work-package-changeset';
 
 interface CellMilestoneMovement {
   // Target value to move milestone to
@@ -47,17 +48,10 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
    * For generic work packages, assigns start and due date.
    *
    */
-  public assignDateValues(wp: WorkPackageResourceInterface, dates: CellMilestoneMovement) {
-    this.assignDate(wp, 'date', dates.date!);
+  public assignDateValues(changeset:WorkPackageChangeset, dates: CellMilestoneMovement) {
+    this.assignDate(changeset, 'date', dates.date!);
 
     this.updateMilestoneMovedLabel(dates.date!);
-  }
-
-  /**
-   * Restore the original date, if any was set.
-   */
-  public onCancel(wp: WorkPackageResourceInterface) {
-    wp.restoreFromPristine('date');
   }
 
   /**
@@ -68,7 +62,7 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
                      delta: number,
                      direction: "left" | "right" | "both" | "create" | "dragright") {
 
-    const initialDate = wp.$pristine['date'];
+    const initialDate = wp.date;
     let dates: CellMilestoneMovement = {};
 
     if (initialDate) {
@@ -91,7 +85,7 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
     }
 
     let direction: "left" | "right" | "both" | "create" | "dragright" = "both";
-    renderInfo.workPackage.storePristine('date');
+    renderInfo.changeset!.startEditing('date');
     this.forceCursor('ew-resize');
 
     if (dateForCreate) {
@@ -111,13 +105,14 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
     return direction;
   }
 
-  public update(timelineCell: HTMLElement, element: HTMLDivElement, renderInfo: RenderInfo): boolean {
-    const wp = renderInfo.workPackage;
-    const viewParams = renderInfo.viewParams;
-    const date = moment(wp.date as any);
+  public update(element: HTMLDivElement, renderInfo: RenderInfo): boolean {
+    const changeset = renderInfo.changeset || new WorkPackageChangeset(renderInfo.workPackage);
 
-    // abort if no start or due date
-    if (!wp.date) {
+    const viewParams = renderInfo.viewParams;
+    const date = moment(changeset.value('dueDate'));
+
+    // abort if no date
+    if (!date) {
       return false;
     }
 
@@ -128,7 +123,7 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
     diamond.style.width = 15 + "px";
     diamond.style.height = 15 + "px";
     diamond.style.marginLeft = -(15 / 2) + (renderInfo.viewParams.pixelPerDay / 2) + "px";
-    diamond.style.backgroundColor = this.typeColor(wp);
+    diamond.style.backgroundColor = this.typeColor(renderInfo.workPackage);
 
     // offset left
     const offsetStart = date.diff(viewParams.dateDisplayStart, "days");

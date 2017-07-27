@@ -36,6 +36,8 @@ import * as moment from 'moment';
 import Moment = moment.Moment;
 import {WorkPackageTableRefreshService} from "../../wp-table-refresh-request.service";
 import {LoadingIndicatorService} from '../../../common/loading-indicator/loading-indicator.service';
+import {WorkPackageChangeset} from '../../../wp-edit-form/work-package-changeset';
+import {WorkPackageNotificationService} from '../../../wp-edit/wp-notification.service';
 
 const classNameBar = "bar";
 export const classNameLeftHandle = "leftHandle";
@@ -46,6 +48,7 @@ export function registerWorkPackageMouseHandler(this: void,
                                                 workPackageTimeline: WorkPackageTimelineTableController,
                                                 wpCacheService: WorkPackageCacheService,
                                                 wpTableRefresh: WorkPackageTableRefreshService,
+                                                wpNotificationsService: WorkPackageNotificationService,
                                                 loadingIndicator: LoadingIndicatorService,
                                                 cell: HTMLElement,
                                                 bar: HTMLDivElement,
@@ -53,6 +56,7 @@ export function registerWorkPackageMouseHandler(this: void,
                                                 renderInfo: RenderInfo) {
 
   let mouseDownStartDay: number|null = null;// also flag to signal active drag'n'drop
+  renderInfo.changeset = new WorkPackageChangeset(renderInfo.workPackage);
 
   let dateStates:any;
   let placeholderForEmptyCell: HTMLElement;
@@ -69,14 +73,9 @@ export function registerWorkPackageMouseHandler(this: void,
   // handles initial creation of start/due values
   cell.onmousemove = handleMouseMoveOnEmptyCell;
 
-  function applyDateValues(dates:{[name:string]: Moment}) {
-    const wp = renderInfo.workPackage;
-
+  function applyDateValues(renderInfo:RenderInfo, dates:{[name:string]: Moment}) {
     // Let the renderer decide which fields we change
-    renderer.assignDateValues(wp, dates);
-
-    // Update the work package to refresh dates columns
-    wpCacheService.updateWorkPackage(wp);
+    renderer.assignDateValues(renderInfo.changeset!, dates);
   }
 
   function getCursorOffsetInDaysFromLeft(renderInfo: RenderInfo, ev: MouseEvent) {
@@ -115,7 +114,8 @@ export function registerWorkPackageMouseHandler(this: void,
       const dayUnderCursor = renderInfo.viewParams.dateDisplayStart.clone().add(offsetDayCurrent, "days");
 
       dateStates = renderer.onDaysMoved(renderInfo.workPackage, dayUnderCursor, days, direction);
-      applyDateValues(dateStates);
+      applyDateValues(renderInfo, dateStates);
+      renderer.update(bar, renderInfo);
     }
   }
 
@@ -128,7 +128,6 @@ export function registerWorkPackageMouseHandler(this: void,
 
   function handleMouseMoveOnEmptyCell(ev: MouseEvent) {
     const wp = renderInfo.workPackage;
-
 
     if (!renderer.isEmpty(wp)) {
       return;
@@ -154,7 +153,7 @@ export function registerWorkPackageMouseHandler(this: void,
       const clickStart = renderInfo.viewParams.dateDisplayStart.clone().add(offsetDayStart, "days");
       const dateForCreate = clickStart.format("YYYY-MM-DD");
       const mouseDownType = renderer.onMouseDown(ev, dateForCreate, renderInfo, bar);
-      renderer.update(cell, bar, renderInfo);
+      renderer.update(bar, renderInfo);
 
       if (mouseDownType === "create") {
         deactivate(false);
@@ -167,9 +166,9 @@ export function registerWorkPackageMouseHandler(this: void,
         const dayUnderCursor = renderInfo.viewParams.dateDisplayStart.clone().add(offsetDayCurrent, "days");
         const widthInDays = offsetDayCurrent - offsetDayStart;
         const moved = renderer.onDaysMoved(wp, dayUnderCursor, widthInDays, mouseDownType);
-        renderer.assignDateValues(wp, moved);
+        renderer.assignDateValues(renderInfo.changeset!, moved);
         wpCacheService.updateWorkPackage(wp);
-
+        renderer.update(bar, renderInfo);
       };
 
       cell.onmouseleave = () => {
@@ -209,31 +208,25 @@ export function registerWorkPackageMouseHandler(this: void,
     // const renderInfo = getRenderInfo();
     const wp = renderInfo.workPackage;
     if (cancelled) {
-      // cancelled
-      renderer.onCancel(wp);
       wpCacheService.updateWorkPackage(wp);
+      renderer.update(bar, renderInfo);
       workPackageTimeline.refreshView();
     } else {
       // Persist the changes
-      saveWorkPackage(wp);
+      saveWorkPackage(renderInfo.changeset!);
     }
+
+    delete renderInfo.changeset;
   }
 
-  function saveWorkPackage(workPackage: WorkPackageResourceInterface) {
-    if (!(workPackage.dirty || workPackage.isNew)) {
-      return;
-    }
-
-    loadingIndicator.table.promise = wpCacheService.saveWorkPackage(workPackage)
+  function saveWorkPackage(changeset:WorkPackageChangeset) {
+    loadingIndicator.table.promise = changeset.save()
       .then(() => {
-        wpTableRefresh.request(true, `Moved work package ${workPackage.id} through timeline`);
+        wpTableRefresh.request(true, `Moved work package ${changeset.workPackage.id} through timeline`);
       })
-      .catch(() => {
-        if (!workPackage.isNew) {
-          // Reset the changes on error
-          renderer.onCancel(workPackage);
-        }
-
+      .catch((error) => {
+        changeset.clear();
+        wpNotificationsService.handleErrorResponse(error, renderInfo.workPackage);
         workPackageTimeline.refreshView();
       });
   }

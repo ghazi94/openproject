@@ -12,38 +12,39 @@ import {classNameLeftHandle, classNameRightHandle} from "./wp-timeline-cell-mous
 import Moment = moment.Moment;
 import {WorkPackageTimelineTableController} from '../container/wp-timeline-container.directive';
 import {hasChildrenInTable} from '../../../wp-fast-table/helpers/wp-table-hierarchy-helpers';
+import {WorkPackageChangeset} from '../../../wp-edit-form/work-package-changeset';
 
 interface CellDateMovement {
   // Target values to move work package to
-  startDate?: moment.Moment;
-  dueDate?: moment.Moment;
+  startDate?:moment.Moment;
+  dueDate?:moment.Moment;
 }
 
 export class TimelineCellRenderer {
 
   protected TimezoneService:any;
 
-  protected dateDisplaysOnMouseMove: {left?: HTMLElement; right?: HTMLElement} = {};
+  protected dateDisplaysOnMouseMove:{ left?:HTMLElement; right?:HTMLElement } = {};
 
   constructor(public workPackageTimeline:WorkPackageTimelineTableController) {
   }
 
-  public get type(): string {
+  public get type():string {
     return "bar";
   }
 
-  public get fallbackColor(): string {
+  public get fallbackColor():string {
     return "rgba(50, 50, 50, 0.1)";
   }
 
-  public isEmpty(wp: WorkPackageResourceInterface) {
+  public isEmpty(wp:WorkPackageResourceInterface) {
     const start = moment(wp.startDate as any);
     const due = moment(wp.dueDate as any);
     const noStartAndDueValues = _.isNaN(start.valueOf()) && _.isNaN(due.valueOf());
     return noStartAndDueValues;
   }
 
-  public displayPlaceholderUnderCursor(ev: MouseEvent, renderInfo: RenderInfo): HTMLElement {
+  public displayPlaceholderUnderCursor(ev:MouseEvent, renderInfo:RenderInfo):HTMLElement {
     const days = Math.floor(ev.offsetX / renderInfo.viewParams.pixelPerDay);
 
     const placeholder = document.createElement("div");
@@ -62,34 +63,26 @@ export class TimelineCellRenderer {
    * For generic work packages, assigns start and due date.
    *
    */
-  public assignDateValues(wp: WorkPackageResourceInterface, dates: CellDateMovement) {
-    this.assignDate(wp, "startDate", dates.startDate!);
-    this.assignDate(wp, "dueDate", dates.dueDate!);
+  public assignDateValues(changeset:WorkPackageChangeset, dates:CellDateMovement) {
+    this.assignDate(changeset, "startDate", dates.startDate!);
+    this.assignDate(changeset, "dueDate", dates.dueDate!);
 
     this.updateLeftRightMovedLabel(dates.startDate!, dates.dueDate!);
-  }
-
-  /**
-   * Restore the original date, if any was set.
-   */
-  public onCancel(wp: WorkPackageResourceInterface) {
-    wp.restoreFromPristine("startDate");
-    wp.restoreFromPristine("dueDate");
   }
 
   /**
    * Handle movement by <delta> days of the work package to either (or both) edge(s)
    * depending on which initial date was set.
    */
-  public onDaysMoved(wp: WorkPackageResourceInterface,
-                     dayUnderCursor: Moment,
-                     delta: number,
-                     direction: "left" | "right" | "both" | "create" | "dragright"): CellDateMovement {
+  public onDaysMoved(wp:WorkPackageResourceInterface,
+                     dayUnderCursor:Moment,
+                     delta:number,
+                     direction:"left" | "right" | "both" | "create" | "dragright"):CellDateMovement {
 
-    const initialStartDate = wp.$pristine["startDate"];
-    const initialDueDate = wp.$pristine["dueDate"];
+    const initialStartDate = wp.startDate;
+    const initialDueDate = wp.dueDate;
 
-    let dates: CellDateMovement = {};
+    let dates:CellDateMovement = {};
 
     if (direction === "left") {
       dates.startDate = moment(initialStartDate || initialDueDate).add(delta, "days");
@@ -118,10 +111,10 @@ export class TimelineCellRenderer {
     return dates;
   }
 
-  public onMouseDown(ev: MouseEvent,
-                     dateForCreate: string|null,
-                     renderInfo: RenderInfo,
-                     elem: HTMLElement): "left" | "right" | "both" | "dragright" | "create" {
+  public onMouseDown(ev:MouseEvent,
+                     dateForCreate:string | null,
+                     renderInfo:RenderInfo,
+                     elem:HTMLElement):"left" | "right" | "both" | "dragright" | "create" {
 
     // check for active selection mode
     if (renderInfo.viewParams.activeSelectionMode) {
@@ -130,9 +123,9 @@ export class TimelineCellRenderer {
       return "both"; // irrelevant
     }
 
-    renderInfo.workPackage.storePristine("startDate");
-    renderInfo.workPackage.storePristine("dueDate");
-    let direction: "left" | "right" | "both" | "create" | "dragright";
+    renderInfo.changeset!.startEditing("startDate");
+    renderInfo.changeset!.startEditing("dueDate");
+    let direction:"left" | "right" | "both" | "create" | "dragright";
 
     // Update the cursor and maybe set start/due values
     if (jQuery(ev.target).hasClass(classNameLeftHandle)) {
@@ -195,15 +188,15 @@ export class TimelineCellRenderer {
    * @return true, if the element should still be displayed.
    *         false, if the element must be removed from the timeline.
    */
-  public update(timelineCell: HTMLElement, bar: HTMLDivElement, renderInfo: RenderInfo): boolean {
-    const wp = renderInfo.workPackage;
+  public update(bar:HTMLDivElement, renderInfo:RenderInfo):boolean {
+    const changeset = renderInfo.changeset || new WorkPackageChangeset(renderInfo.workPackage);
 
     // general settings - bar
     bar.style.backgroundColor = this.typeColor(renderInfo.workPackage);
 
     const viewParams = renderInfo.viewParams;
-    let start = moment(wp.startDate as any);
-    let due = moment(wp.dueDate as any);
+    let start = moment(changeset.value('startDate'));
+    let due = moment(changeset.value('dueDate'));
 
     if (_.isNaN(start.valueOf()) && _.isNaN(due.valueOf())) {
       bar.style.visibility = "hidden";
@@ -247,7 +240,7 @@ export class TimelineCellRenderer {
     return true;
   }
 
-  protected checkForActiveSelectionMode(renderInfo: RenderInfo, element: HTMLElement) {
+  protected checkForActiveSelectionMode(renderInfo:RenderInfo, element:HTMLElement) {
     if (renderInfo.viewParams.activeSelectionMode) {
       element.style.backgroundImage = null; // required! unable to disable "fade out bar" with css
 
@@ -258,7 +251,7 @@ export class TimelineCellRenderer {
     }
   }
 
-  getMarginLeftOfLeftSide(renderInfo: RenderInfo): number {
+  getMarginLeftOfLeftSide(renderInfo:RenderInfo):number {
     const wp = renderInfo.workPackage;
 
     let start = moment(wp.startDate as any);
@@ -269,7 +262,7 @@ export class TimelineCellRenderer {
     return calculatePositionValueForDayCountingPx(renderInfo.viewParams, offsetStart);
   }
 
-  getMarginLeftOfRightSide(renderInfo: RenderInfo): number {
+  getMarginLeftOfRightSide(renderInfo:RenderInfo):number {
     const wp = renderInfo.workPackage;
 
     let start = moment(wp.startDate as any);
@@ -284,11 +277,11 @@ export class TimelineCellRenderer {
     return calculatePositionValueForDayCountingPx(renderInfo.viewParams, offsetStart + duration);
   }
 
-  getPaddingLeftForIncomingRelationLines(renderInfo: RenderInfo): number {
+  getPaddingLeftForIncomingRelationLines(renderInfo:RenderInfo):number {
     return renderInfo.viewParams.pixelPerDay / 8;
   }
 
-  getPaddingRightForOutgoingRelationLines(renderInfo: RenderInfo): number {
+  getPaddingRightForOutgoingRelationLines(renderInfo:RenderInfo):number {
     return 0;
   }
 
@@ -296,7 +289,7 @@ export class TimelineCellRenderer {
    * Render the generic cell element, a bar spanning from
    * start to due date.
    */
-  public render(renderInfo: RenderInfo): HTMLDivElement {
+  public render(renderInfo:RenderInfo):HTMLDivElement {
     const bar = document.createElement("div");
     const left = document.createElement("div");
     const right = document.createElement("div");
@@ -311,7 +304,7 @@ export class TimelineCellRenderer {
     return bar;
   }
 
-  protected typeColor(wp: WorkPackageResourceInterface): string {
+  protected typeColor(wp:WorkPackageResourceInterface):string {
     let type = wp.type && wp.type.state.value;
     if (type && type.color) {
       return type.color;
@@ -320,16 +313,16 @@ export class TimelineCellRenderer {
     return this.fallbackColor;
   }
 
-  protected assignDate(wp: WorkPackageResourceInterface, attributeName: string, value: moment.Moment) {
+  protected assignDate(changeset:WorkPackageChangeset, attributeName:string, value:moment.Moment) {
     if (value) {
-      wp[attributeName] = value.format("YYYY-MM-DD") as any;
+      changeset.setValue(attributeName, value.format("YYYY-MM-DD"));
     }
   }
 
   /**
    * Force the cursor to the given cursor type.
    */
-  protected forceCursor(cursor: string) {
+  protected forceCursor(cursor:string) {
     jQuery(".hascontextmenu").css("cursor", cursor);
     jQuery("." + timelineElementCssClass).css("cursor", cursor);
   }
@@ -340,7 +333,7 @@ export class TimelineCellRenderer {
    * Known cases:
    * 1. Display a clamp if this work package is a parent element
    */
-  checkForSpecialDisplaySituations(renderInfo: RenderInfo, bar: HTMLElement) {
+  checkForSpecialDisplaySituations(renderInfo:RenderInfo, bar:HTMLElement) {
     const wp = renderInfo.workPackage;
 
     // Cannot eddit the work package if it has children
@@ -350,7 +343,7 @@ export class TimelineCellRenderer {
 
     // Display the parent as clamp-style when it has children in the table
     if (this.workPackageTimeline.inHierarchyMode &&
-        hasChildrenInTable(wp, this.workPackageTimeline.workPackageTable)) {
+      hasChildrenInTable(wp, this.workPackageTimeline.workPackageTable)) {
       bar.classList.add('-clamp-style');
       bar.style.borderStyle = 'solid';
       bar.style.borderWidth = '2px';
@@ -360,7 +353,7 @@ export class TimelineCellRenderer {
     }
   }
 
-  private updateLeftRightMovedLabel(start: Moment, due: Moment) {
+  private updateLeftRightMovedLabel(start:Moment, due:Moment) {
     if (!this.TimezoneService) {
       this.TimezoneService = $injectNow("TimezoneService");
     }
